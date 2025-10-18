@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ruleta de Colores Virtual — Juego para 20 jugadores</title>
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--accent:#f59e0b;color-scheme: dark}
+    body{font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,Arial;margin:0;background:linear-gradient(180deg,#071429 0%, #071b2e 100%);color:#e6eef8}
+    .container{max-width:1200px;margin:24px auto;padding:20px}
+    header{display:flex;align-items:center;gap:16px}
+    h1{margin:0;font-size:20px}
+    .grid{display:grid;grid-template-columns:380px 1fr;gap:18px;margin-top:18px}
+    .card{background:rgba(255,255,255,0.03);border-radius:12px;padding:14px;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
+    label{display:block;margin-top:8px;font-size:13px}
+    input[type=number],select,input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit}
+    button{background:var(--accent);border:none;color:#082032;padding:8px 12px;border-radius:8px;cursor:pointer}
+    #wheelCanvas{background:transparent;border-radius:12px;display:block;margin:0 auto}
+    .players{max-height:360px;overflow:auto;margin-top:8px}
+    .player{display:flex;gap:8px;align-items:center;padding:6px;border-radius:8px;margin-bottom:6px}
+    .player input[type=number]{width:80px}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:6px;text-align:left;border-bottom:1px dashed rgba(255,255,255,0.03);font-size:13px}
+    .small{font-size:12px;color:#cfe6ff}
+    .footer{margin-top:12px;font-size:13px;color:#cfe6ff}
+    .justificacion{max-height:320px;overflow:auto}
+    .muted{opacity:0.8;font-size:13px}
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <!-- Inline SVG logo to avoid data URI parsing issues -->
+      <svg width="46" height="46" viewBox="0 0 40 40" style="border-radius:8px;background:#0b1220;padding:3px;">
+        <rect width="40" height="40" rx="8" fill="#0b1220"></rect>
+        <text x="50%" y="58%" font-size="20" fill="#f59e0b" text-anchor="middle" font-family="sans-serif">R</text>
+      </svg>
+      <div>
+        <h1>Ruleta de Colores Virtual — Ejecución para ~20 jugadores</h1>
+        <div class="muted">Juego educativo con probabilidades justificadas y control de ventaja de la casa.</div>
+      </div>
+    </header>
+
+    <div class="grid">
+      <div class="card">
+        <h3>Configuración inicial</h3>
+        <label>Máximo jugadores (recomendado 20)</label>
+        <input id="maxPlayers" type="number" min="2" max="40" value="20">
+
+        <label>Distribución de la ruleta (segmentos totales = 20 por defecto)</label>
+        <div class="small">Ajusta la cantidad de casillas que representa cada color. El total ideal: 20.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+          <div>
+            <label>Rojo</label>
+            <input id="c_red" type="number" min="0" value="3">
+          </div>
+          <div>
+            <label>Azul</label>
+            <input id="c_blue" type="number" min="0" value="4">
+          </div>
+          <div>
+            <label>Verde</label>
+            <input id="c_green" type="number" min="0" value="2">
+          </div>
+          <div>
+            <label>Amarillo</label>
+            <input id="c_yellow" type="number" min="0" value="1">
+          </div>
+          <div>
+            <label>Negro</label>
+            <input id="c_black" type="number" min="0" value="5">
+          </div>
+          <div>
+            <label>Morado</label>
+            <input id="c_purple" type="number" min="0" value="2">
+          </div>
+        </div>
+
+        <label style="margin-top:8px">Ventaja de la casa (porcentaje sobre payout justo)</label>
+        <input id="houseEdge" type="number" min="0" max="0.5" step="0.01" value="0.12">
+        <div class="small">Ej: 0.12 = 12% de ventaja sobre el pago justo</div>
+
+        <div style="margin-top:12px;display:flex;gap:8px;">
+          <button id="applyConfig">Aplicar configuración</button>
+          <button id="resetGame">Reiniciar partida</button>
+        </div>
+
+        <h3 style="margin-top:12px">Jugadores</h3>
+        <div class="small">Registra hasta <span id="maxPlayersLabel">20</span> jugadores, asigna fichas iniciales.</div>
+        <label>Fichas iniciales por jugador</label>
+        <input id="initialChips" type="number" min="1" value="10">
+        <div class="players card" id="playersList"></div>
+
+        <div style="margin-top:8px;">
+          <button id="createPlayers">Crear jugadores</button>
+        </div>
+
+      </div>
+
+      <div class="card">
+        <div style="display:flex;gap:12px;align-items:center;justify-content:space-between">
+          <div>
+            <h3>Ruleta visual</h3>
+            <div class="small">Pulsa <strong>Girar</strong> para seleccionar la casilla ganadora aleatoriamente.</div>
+          </div>
+          <div class="controls">
+            <button id="spinBtn">Girar</button>
+            <button id="nextRoundBtn">Siguiente Ronda</button>
+            <button id="exportLog">Exportar log</button>
+          </div>
+        </div>
+
+        <canvas id="wheelCanvas" width="560" height="560"></canvas>
+
+        <div style="display:flex;gap:18px;margin-top:8px">
+          <div style="flex:1">
+            <h4>Estado del juego</h4>
+            <table>
+              <tr><th>Ronda</th><td id="roundNumber">0</td></tr>
+              <tr><th>Apuestas totales</th><td id="totalBets">0</td></tr>
+              <tr><th>Fichas en juego</th><td id="chipsInPlay">0</td></tr>
+            </table>
+          </div>
+          <div style="flex:1">
+            <h4>Probabilidades y pagos</h4>
+            <div id="probTable" class="small"></div>
+          </div>
+        </div>
+
+        <h4 style="margin-top:12px">Registro de apuestas</h4>
+        <div class="small">Selecciona un jugador, elige color y apuesta (1 ficha mínimo).</div>
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+          <select id="selectPlayer"></select>
+          <select id="selectColor"></select>
+          <input id="betAmount" type="number" min="1" value="1">
+          <button id="placeBet">Colocar apuesta</button>
+        </div>
+
+        <div style="margin-top:8px;">
+          <table id="betsTable"><thead><tr><th>Jugador</th><th>Color</th><th>Apuesta</th><th></th></tr></thead><tbody></tbody></table>
+        </div>
+
+        <h4 style="margin-top:12px">Log</h4>
+        <div id="gameLog" style="max-height:180px;overflow:auto;background:rgba(0,0,0,0.15);padding:8px;border-radius:8px" class="small"></div>
+
+      </div>
+
+      <div style="grid-column:1 / -1;display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:12px">
+        <div class="card justificacion">
+          <h3>Justificación y contexto (basado en la imagen)</h3>
+          <p><strong>Actividad: "Apuesta Matemática"</strong><br>Esta actividad, basada en el Aprendizaje Basado en Retos, busca que los estudiantes diseñen un juego de azar que cumpla con principios matemáticos de probabilidad y sea justo para los jugadores.</p>
+
+          <p><strong>Contexto del reto:</strong><br>Imagina que eres el dueño de un casino y debes diseñar un nuevo juego de azar. Este debe ser atractivo para los jugadores, pero también debe garantizar que el casino tenga ganancias en el largo plazo. Debes calcular y justificar las probabilidades de ganar y perder.</p>
+
+          <p><strong>Se permite elegir entre distintos tipos de juegos:</strong><br>- Lanzamiento de dados.<br>- Ruletas personalizadas.<br>- Cartas o fichas.<br>- Sorteos con urnas y bolas de colores.</p>
+
+          <p><strong>Diseño del juego — cada equipo debe definir:</strong><br>- Reglas del juego (¿cómo se juega?, ¿cuántas rondas hay?).<br>- Condiciones de victoria (¿cómo gana un jugador?).<br>- Probabilidad de ganar y perder (deben calcular las probabilidades de cada posible resultado).<br>- Balance de apuestas (¿es un juego justo o inclina la balanza a favor de la casa?).</p>
+
+          <p class="small">La implementación virtual que tienes aquí permite justificar probabilidades, calcular pagos justos y aplicar una ventaja de la casa configurable para cumplir el requisito del reto.</p>
+        </div>
+
+        <div class="card">
+          <h3>Instrucciones rápidas</h3>
+          <ol class="small">
+            <li>Configura la distribución de casillas y la ventaja de la casa.</li>
+            <li>Crea los jugadores (hasta 20) y asigna fichas.</li>
+            <li>Cada jugador coloca apuestas en color (una apuesta por jugador por ronda).</li>
+            <li>Pulsa <strong>Girar</strong> para elegir la casilla ganadora.</li>
+            <li>El sistema paga automáticamente según la probabilidad y la ventaja configurada.</li>
+            <li>Repite rondas y usa el log para analizar EV y resultados.</li>
+          </ol>
+
+          <h4>Notas pedagógicas</h4>
+          <div class="small">Al final, compara el valor esperado teórico (EV) con el EV observado por jugador/por ronda y discute la ley de los grandes números y el sentido de la ventaja de la casa.</div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+  // --- Datos y estado del juego ---
+  const colors = [
+    {id:'red', label:'Rojo', hex:'#ef4444'},
+    {id:'blue', label:'Azul', hex:'#3b82f6'},
+    {id:'green', label:'Verde', hex:'#10b981'},
+    {id:'yellow', label:'Amarillo', hex:'#f59e0b'},
+    {id:'black', label:'Negro', hex:'#111827'},
+    {id:'purple', label:'Morado', hex:'#8b5cf6'}
+  ];
+
+  let state = {
+    maxPlayers:20,
+    initialChips:10,
+    round:0,
+    wheelSegments: {}, // color -> count
+    totalSegments:20,
+    houseEdge:0.12,
+    players:[], // {id,name,chips}
+    bets:[], // {playerId,color,amount}
+    history:[], // rounds with bets and winner
+    messages: [] // action / system messages
+  };
+
+  // --- DOM references ---
+  const playersList = document.getElementById('playersList');
+  const maxPlayersInput = document.getElementById('maxPlayers');
+  const maxPlayersLabel = document.getElementById('maxPlayersLabel');
+  const initialChipsInput = document.getElementById('initialChips');
+  const createPlayersBtn = document.getElementById('createPlayers');
+  const playersSelect = document.getElementById('selectPlayer');
+  const colorSelect = document.getElementById('selectColor');
+  const betAmountInput = document.getElementById('betAmount');
+  const placeBetBtn = document.getElementById('placeBet');
+  const betsTableBody = document.querySelector('#betsTable tbody');
+  const gameLog = document.getElementById('gameLog');
+  const roundNumber = document.getElementById('roundNumber');
+  const totalBetsEl = document.getElementById('totalBets');
+  const chipsInPlayEl = document.getElementById('chipsInPlay');
+  const probTable = document.getElementById('probTable');
+  const spinBtn = document.getElementById('spinBtn');
+  const nextRoundBtn = document.getElementById('nextRoundBtn');
+  const exportLogBtn = document.getElementById('exportLog');
+  const applyConfigBtn = document.getElementById('applyConfig');
+  const resetGameBtn = document.getElementById('resetGame');
+
+  // wheel canvas
+  const canvas = document.getElementById('wheelCanvas');
+  const ctx = canvas.getContext('2d');
+  const cx = canvas.width/2; const cy = canvas.height/2; const radius = Math.min(cx,cy)-12;
+
+  // inicializar inputs de casillas
+  function readSegmentsFromInputs(){
+    const map = {};
+    colors.forEach(c=>{
+      const el = document.getElementById('c_'+c.id);
+      map[c.id] = Math.max(0,parseInt(el.value)||0);
+    });
+    let total=0; for(const k in map) total+=map[k];
+    state.wheelSegments = map; state.totalSegments = total || 1;
+  }
+
+  function updateProbTable(){
+    const p = state.totalSegments;
+    let html = '<table><tr><th>Color</th><th>Casillas</th><th>Probabilidad</th><th>Pago justo (neto)</th><th>Pago recomendado</th></tr>';
+    colors.forEach(c=>{
+      const count = state.wheelSegments[c.id]||0;
+      const prob = count / p;
+      const fairNet = prob>0 ? ((1-prob)/prob).toFixed(4) : '-';
+      const suggested = prob>0 ? ( ((1-prob)/prob) * (1 - state.houseEdge) ).toFixed(4) : '-';
+      html += `<tr><td>${c.label}</td><td>${count}</td><td>${(prob*100).toFixed(2)}%</td><td>${fairNet}</td><td>${suggested}</td></tr>`;
+    });
+    html += '</table>';
+    probTable.innerHTML = html;
+  }
+
+  function drawWheel(rotation=0){
+    // build segments array
+    const segs = [];
+    colors.forEach(c=>{
+      const count = state.wheelSegments[c.id]||0;
+      for(let i=0;i<count;i++) segs.push(c);
+    });
+    const n = segs.length || 1;
+    // clear
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    // background circle
+    ctx.beginPath(); ctx.fillStyle='rgba(255,255,255,0.02)'; ctx.arc(cx,cy,radius+8,0,Math.PI*2); ctx.fill();
+    // draw segments
+    const twoPi = Math.PI*2;
+    let angle = -Math.PI/2 + rotation;
+    for(let i=0;i<n;i++){
+      const slice = twoPi * (1/n);
+      ctx.beginPath();
+      ctx.moveTo(cx,cy);
+      ctx.arc(cx,cy,radius,angle,angle+slice);
+      ctx.closePath();
+      ctx.fillStyle = segs[i].hex;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.stroke();
+      ctx.save();
+      ctx.translate(cx,cy);
+      const mid = angle + slice/2;
+      ctx.rotate(mid);
+      ctx.textAlign = 'right'; ctx.fillStyle = '#fff'; ctx.font = '14px sans-serif';
+      ctx.fillText(segs[i].label, radius-10, 6);
+      ctx.restore();
+      angle += slice;
+    }
+    // center circle
+    ctx.beginPath(); ctx.arc(cx,cy,48,0,Math.PI*2); ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fill();
+    ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.font='18px sans-serif'; ctx.fillText('SPIN',cx,cy+6);
+    // pointer
+    ctx.beginPath(); ctx.moveTo(cx,cy-radius-16); ctx.lineTo(cx-14,cy-radius+6); ctx.lineTo(cx+14,cy-radius+6); ctx.closePath(); ctx.fillStyle='#f8fafc'; ctx.fill();
+  }
+
+  // --- Players management ---
+  function createPlayers(){
+    const max = Math.max(2,Math.min(40,parseInt(maxPlayersInput.value)||20));
+    state.maxPlayers = max; maxPlayersLabel.textContent = max;
+    state.players = [];
+    const initial = Math.max(1,parseInt(initialChipsInput.value)||10);
+    for(let i=1;i<=max;i++){
+      state.players.push({id:i,name:`Jugador ${i}`,chips:initial});
+    }
+    renderPlayers();
+    refreshPlayerSelect();
+    addMessage(`Se crearon ${max} jugadores con ${initial} fichas cada uno.`);
+  }
+
+  function renderPlayers(){
+    playersList.innerHTML = '';
+    state.players.forEach(p=>{
+      const div = document.createElement('div'); div.className='player';
+      div.innerHTML = `<div style="flex:1">${p.name}</div><div class="small">Fichas: <strong>${p.chips}</strong></div>`;
+      playersList.appendChild(div);
+    });
+    updateStats();
+  }
+
+  function refreshPlayerSelect(){
+    playersSelect.innerHTML = '';
+    state.players.forEach(p=>{
+      const opt = document.createElement('option'); opt.value=p.id; opt.textContent=`${p.name} (fichas: ${p.chips})`;
+      playersSelect.appendChild(opt);
+    });
+    colorSelect.innerHTML='';
+    colors.forEach(c=>{ const opt=document.createElement('option'); opt.value=c.id; opt.textContent=c.label; colorSelect.appendChild(opt); });
+  }
+
+  // bets
+  function placeBet(){
+    const pid = parseInt(playersSelect.value);
+    const color = colorSelect.value;
+    const amount = Math.max(1,parseInt(betAmountInput.value)||1);
+    const player = state.players.find(x=>x.id===pid);
+    if(!player){ alert('Selecciona un jugador'); return; }
+    if(player.chips < amount){ alert('No tiene fichas suficientes'); return; }
+    // one bet per player per round
+    if(state.bets.some(b=>b.playerId===pid)){ alert('Ya tiene una apuesta en esta ronda'); return; }
+    state.bets.push({playerId:pid,color,amount});
+    player.chips -= amount;
+    renderPlayers(); renderBets(); updateStats();
+    addMessage(`${player.name} apostó ${amount} ficha(s) a ${color}.`);
+  }
+
+  function renderBets(){
+    betsTableBody.innerHTML = '';
+    state.bets.forEach((b,idx)=>{
+      const p = state.players.find(x=>x.id===b.playerId) || {name:'?'};
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${p.name}</td><td>${b.color}</td><td>${b.amount}</td><td><button data-idx='${idx}'>Quitar</button></td>`;
+      betsTableBody.appendChild(tr);
+    });
+    // attach handlers
+    betsTableBody.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',e=>{
+      const idx = parseInt(btn.dataset.idx); const b=state.bets[idx]; const p=state.players.find(x=>x.id===b.playerId); if(p){ p.chips+=b.amount; }
+      state.bets.splice(idx,1); renderPlayers(); renderBets(); updateStats(); addMessage(`${p? p.name : 'Jugador'} canceló su apuesta.`);
+    }));
+  }
+
+  // --- Spin & resolve ---
+  function computeSegmentsArray(){
+    const arr = [];
+    colors.forEach(c=>{
+      const count = state.wheelSegments[c.id]||0;
+      for(let i=0;i<count;i++) arr.push(c);
+    });
+    return arr.length? arr : [colors[0]];
+  }
+
+  async function onSpin(){
+    if(state.bets.length===0){ alert('No hay apuestas en esta ronda'); return; }
+    readSegmentsFromInputs(); updateProbTable();
+    const segs = computeSegmentsArray();
+    const n = segs.length;
+    // select random index
+    const index = Math.floor(Math.random()*n);
+    // animate
+    const targetAngle = -Math.PI/2 + (index + Math.random())*(2*Math.PI/n);
+    const spins = 5, duration = 1600; const start = performance.now();
+    function step(t){
+      const elapsed = t-start; const tnorm = Math.min(1, elapsed/duration);
+      const ease = 1 - Math.pow(1 - tnorm, 3);
+      const rot = ease * (spins*2*Math.PI + targetAngle);
+      drawWheel(rot);
+      if(tnorm<1) requestAnimationFrame(step); else finish();
+    }
+    function finish(){
+      const winner = segs[index] || colors[0];
+      resolveRound(winner);
+    }
+    requestAnimationFrame(step);
+  }
+
+  function resolveRound(winner){
+    state.round += 1; roundNumber.textContent = state.round;
+    // compute payouts
+    const totalBets = state.bets.reduce((s,b)=>s+b.amount,0);
+    const roundRecord = {round: state.round, winner: winner.id, bets: JSON.parse(JSON.stringify(state.bets))};
+    state.bets.forEach(b=>{
+      const player = state.players.find(x=>x.id===b.playerId);
+      const count = state.wheelSegments[b.color]||0; const p = count / (state.totalSegments||1);
+      if(b.color === winner.id){
+        const fairNet = (1-p)/p; const net = fairNet * (1 - state.houseEdge);
+        const payout = Math.round(b.amount * (1 + net));
+        if(player) player.chips += payout;
+        addMessage(`${player?player.name:'Jugador'} ganó ${payout} fichas (apostó ${b.amount} a ${b.color}).`);
+      } else {
+        addMessage(`${player?player.name:'Jugador'} perdió ${b.amount} fichas (apostó a ${b.color}).`);
+      }
+    });
+    state.history.push(roundRecord);
+    state.bets = [];
+    renderPlayers(); renderBets(); updateStats();
+  }
+
+  function updateStats(){
+    // total bets (in history plus current bets)
+    const pastBets = state.history.reduce((s,r)=> s + (r.bets? r.bets.reduce((t,b)=> t + b.amount,0):0), 0);
+    const currentBets = state.bets.reduce((t,b)=> t + b.amount,0);
+    totalBetsEl.textContent = pastBets + currentBets;
+    chipsInPlayEl.textContent = state.players.reduce((s,p)=>s + p.chips,0);
+  }
+
+  function addMessage(msg){
+    const t = new Date().toLocaleTimeString();
+    state.messages.unshift({t,msg});
+    // keep last 200 messages
+    if(state.messages.length>200) state.messages.pop();
+    renderMessages();
+  }
+
+  function renderMessages(){
+    gameLog.innerHTML = '';
+    state.messages.forEach(m=>{
+      const d = document.createElement('div'); d.textContent = `[${m.t}] ${m.msg}`; gameLog.appendChild(d);
+    });
+  }
+
+  // --- events ---
+  createPlayersBtn.addEventListener('click',()=>createPlayers());
+  placeBetBtn.addEventListener('click',()=>placeBet());
+  applyConfigBtn.addEventListener('click',()=>{ readSegmentsFromInputs(); state.houseEdge = parseFloat(document.getElementById('houseEdge').value) || 0.12; updateProbTable(); drawWheel(); addMessage('Configuración aplicada.'); });
+  resetGameBtn.addEventListener('click',()=>{ if(confirm('Reiniciar partida y borrar todo?')) location.reload(); });
+  spinBtn.addEventListener('click',()=>onSpin());
+  nextRoundBtn.addEventListener('click',()=>{ state.bets=[]; renderBets(); addMessage('Preparado para siguiente ronda.'); });
+  exportLogBtn.addEventListener('click',()=>{
+    const exportData = {state: {players: state.players, history: state.history, messages: state.messages, wheelSegments: state.wheelSegments}};
+    const data = JSON.stringify(exportData,null,2);
+    const blob = new Blob([data],{type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'ruleta_log.json'; a.click();
+  });
+
+  // inicial
+  (function init(){
+    readSegmentsFromInputs(); updateProbTable(); drawWheel(); maxPlayersLabel.textContent = state.maxPlayers;
+    addMessage('Interfaz lista. Configura y crea jugadores.');
+  })();
+
+  </script>
+</body>
+</html>
